@@ -1,0 +1,558 @@
+---
+title: "highfat data processing"
+author: "MacManes"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+bring in libs
+
+```{r import libraries message=FALSE, warning=FALSE, echo=FALSE}
+library(renv)
+library(rmarkdown)
+#library(devtools)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(viridis)
+library(patchwork)
+library(tidyselect)
+library(readxl)
+library(broom)
+#library(cowplot)
+library(DescTools)
+#library(ggpubr)
+library(plyr)
+library(pwr)
+library(Cairo)
+#library(ggpattern)
+#library(timeDate)
+library(mgcv)
+library(MASS)
+library(dplyr)
+```
+
+
+```{r create environment}
+setwd("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/R/highfat_dehydration/")
+path <- "C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep1/"
+source("functions.R")
+```
+
+```{r bring in metadata and weights message=FALSE, warning=FALSE, echo=FALSE}
+
+mouse_metadata_highfat_rep1 <- read_excel("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/mouse_data.xlsx", 
+    sheet = "rep1_highfat", col_types = c("text", 
+        "numeric", "numeric", "text", "text", 
+        "numeric", "text", "text", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "text"))
+```
+
+
+```{r import data rep 1 message=FALSE, warning=FALSE, echo=FALSE}
+
+mouse_metadata_rep1 <- read_csv("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/lowfat_dehydration_rep1/mouse_data_rep1.csv",skip_empty_rows=TRUE) %>%
+    mutate(date, date = as.Date(date, format = "%d-%m-%y", tz="EST")) %>%
+    unite("DateTime", date:time, remove = FALSE, sep =  " ") %>%
+    mutate(DateTime = as.POSIXlt(DateTime), tz="EST")
+
+#this is for room temperature
+path <- "C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/lowfat_dehydration_rep1/"
+chunk1 <- bring_in_data_rep1("chunk1.csv")
+chunk1 <- chunk1 %>% mutate(DateTime = with_tz(DateTime, tz="EST") + hours(1))
+chunk1_act <- read_csv("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/lowfat_baseline/chunk1_activity.csv", n_max=dim(chunk1)[1])
+
+
+#this is the physiology data for the dehydration part of the highfat experiment rep1
+path <- "C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep1/"
+hdr1 <- bring_in_data_highfat_rep1("highfat_dehydrated_rep1.csv")
+hdr1 <- hdr1 %>% mutate(DateTime = with_tz(DateTime, tz="EST") + hours(1))
+hdr1_act <- read_csv("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep1/highfat_dehydrated_rep1_activity.csv", n_max=dim(hdr1)[1])
+
+hdr1_temps <- bring_in_temps_highfat_rep1("temps_rep1.csv")
+
+```
+
+
+
+```{r manipulate data REP1}
+################### hdr1
+
+#make activity data non-cumulative
+hdr1 <- hdr1 %>% 
+  add_column(MOD_ADX = hdr1_act$MOD_ADX) %>%
+  mutate(Activity = MOD_ADX - lag(MOD_ADX, default = 0))
+
+
+
+#subset out baseline data
+baseline <- c(7)
+baseline_cage <- hdr1 %>% 
+  filter(Animal %in% baseline)
+
+
+#subset out animal data
+target <- c(0,1,2,3,4,5,6)
+cages <- hdr1 %>% 
+  filter(Animal %in% target)
+
+cages <- cages %>% 
+  dplyr::select(Animal_ID, sex, DateTime, date, time, weight, Activity, EE_KCalH, EE_kJH, H2Omg, 
+         H2Oml, Deg_C, CO2, VO2, VCO2, RQ, SD_VO2, SD_VCO2, SD_H2Oml, 
+         SD_H2Omg, SS4_FR, H2O_WVP, BP)
+
+hdr1_cages <- cages
+
+
+count = 1
+dependent_variables = c("EE_kJH", "RQ", "VO2", "VCO2", "H2Omg", "Activity")
+varname_list = c("EE_OLs","RQ_OLs","VO2_OLs","VCO2_OLs","H2O_OLs", "Activity_OLs")
+
+for (DV in dependent_variables){
+  print(DV)
+    model <- lm(as.formula(paste0(DV, " ~ Animal_ID")), data = hdr1_cages)
+  model.metrics <- augment(model) %>% dplyr::select(-.hat, -.sigma, -.fitted)
+  summ <- model.metrics %>% filter(abs(.std.resid) > 2) %>% as.data.frame()
+
+    OL_list = c()
+  masterlist = c()
+  for (each_outlier_row in 1:nrow(summ)){
+    this_weight <- summ[each_outlier_row, "Animal_ID"]
+    this_DV  <- summ[each_outlier_row, DV]
+    OL_list <- c(OL_list, (which(hdr1_cages$Animal_ID == this_weight & hdr1_cages[DV] == this_DV)))
+
+  }
+  print(OL_list)
+  #Assign list of outliers to specified variable lists (OL_list_EE_kJH, RQ, VO2, VCO2, mgH2O)
+  assign(paste("OL_list_", DV, sep = ""), OL_list)  
+}
+
+masterlist <- c(OL_list_EE_kJH, OL_list_RQ, OL_list_VO2, OL_list_VCO2, OL_list_H2Omg, OL_list_Activity)
+masterlist_noDup <- unique(masterlist)
+
+highfat_dehydration_noOL_rep1 <- hdr1_cages[-c(masterlist_noDup),]
+```
+
+```{r make experimental intervals}
+rep1_water_removal <- ymd_hms("2022-12-16 11:59:59", tz="EST")
+baseline_rep1 <- interval(rep1_water_removal - days(3), rep1_water_removal)
+day1_rep1 <- interval(rep1_water_removal, rep1_water_removal + days(1))
+day2_rep1 <- interval(rep1_water_removal + days(1), rep1_water_removal + days(2))
+day3_rep1 <- interval(rep1_water_removal + days(2), rep1_water_removal + days(3))
+
+baseline_temp_rep1 <- interval(rep1_water_removal - days(30), rep1_water_removal)
+
+```
+
+
+```{r add metadata REP1}
+
+
+highfat_dehydration_noOL_rep1 <- highfat_dehydration_noOL_rep1 %>%
+    mutate(replicate = "rep1")
+
+highfat_dehydration_noOL_rep1 <- highfat_dehydration_noOL_rep1 %>%
+    add_column(experiment_day = NA)
+
+
+highfat_dehydration_noOL_rep1$experiment_day[highfat_dehydration_noOL_rep1$DateTime %within% baseline_rep1 == "TRUE"] <- "baseline"
+highfat_dehydration_noOL_rep1$experiment_day[highfat_dehydration_noOL_rep1$DateTime %within% day1_rep1 == "TRUE"] <- "day1"
+highfat_dehydration_noOL_rep1$experiment_day[highfat_dehydration_noOL_rep1$DateTime %within% day2_rep1 == "TRUE"] <- "day2"
+highfat_dehydration_noOL_rep1$experiment_day[highfat_dehydration_noOL_rep1$DateTime %within% day3_rep1 == "TRUE"] <- "day3"
+write.csv(highfat_dehydration_noOL_rep1, "highfat_dehydration_rep1.csv", row.names = FALSE)
+
+```
+
+
+
+
+
+```{r merge reps for differert days}
+###### make data frames that contain all the data for a given interval. 
+
+baseline_temps <-
+  rbind(hdr1_temps[hdr1_temps$DateTime %within% baseline_temp_rep1,])
+
+day1_temps <-
+  rbind(hdr1_temps[hdr1_temps$DateTime %within% day1_rep1,])
+
+day2_temps <-
+  rbind(hdr1_temps[hdr1_temps$DateTime %within% day2_rep1,])
+
+day3_temps <-
+  rbind(hdr1_temps[hdr1_temps$DateTime %within% day3_rep1,])
+
+baseline <- 
+  rbind(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% baseline_rep1,])
+
+day1 <-
+  rbind(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% day1_rep1,])
+
+
+day2 <-
+  rbind(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% day2_rep1,])
+
+
+day3 <-
+  rbind(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% day3_rep1,])
+
+all_data <- rbind(highfat_dehydration_noOL_rep1)
+
+
+
+```
+
+
+Make plots
+
+```{r make plots}
+
+coeff <- 0
+cols <- c("Baseline"="navyblue","Day 1"="sienna1","Day 2"="sienna3", "Day 3"="sienna4")
+temperatures <- ggplot(data = hdr1_temps ,aes(x=as.POSIXct(time),y=body_temp)) +
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(color = "Baseline", alpha=0.1), shape=20, size=0.5)+
+  #geom_point(data = day1_temps, aes(color="Day 1", alpha=0.2), shape=20, size=0.5)+
+  #geom_point(data = day2_temps, aes(color="Day 2", alpha=0.2), shape=20, size=0.5)+
+  #geom_point(data = day3_temps, aes(color="Day 3", alpha=0.2), shape=20, size=0.5)+
+  geom_point(data = chunk1, aes(x=as.POSIXct(time), y=Deg_C + coeff), size=1, color="black", shape=4)+
+     labs(x = "")+
+  theme_classic()+
+  geom_smooth(method='gam', se = FALSE, aes(color = "Baseline"), span=0.2, size=2)+
+  #geom_smooth(data = day1_temps, method='gam', se = FALSE, aes(color = "Day 1"), size=2)+
+  #geom_smooth(data = day2_temps, method='gam', se = FALSE, aes(color = "Day 2"), size=2)+
+  #geom_smooth(data = day3_temps, method='gam', se = FALSE, aes(color = "Day 3"), size=2)+
+  labs(x = "")+
+  scale_y_continuous(name = "Body Temperature (°C)", limits = c(20,40), sec.axis = sec_axis(~. - coeff, name="Room Temperature (°C)"))+ 
+  guides(alpha = "none")+
+  facet_wrap(~sex) +
+ scale_colour_manual(name="Dehydration",values=cols, guide="none")
+temperatures
+
+
+
+EE <- ggplot(data = baseline,aes(x=as.POSIXct(time),y=EE_kJH)) +
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(color = "Baseline", alpha=0.1))+
+  geom_point(data = day1, aes(color="Day 1", alpha=0.2))+
+  geom_point(data = day2, aes(color="Day 2", alpha=0.2))+
+  geom_point(data = day3, aes(color="Day 3", alpha=0.2))+
+  theme_classic()+
+  ylim(0,1.5) +
+  geom_smooth(method='gam', se = FALSE, aes(color = "Baseline"))+
+  geom_smooth(data = day1, method='gam', se = FALSE, aes(color = "Day 1"))+
+  geom_smooth(data = day2, method='gam', se = FALSE, aes(color = "Day 2"))+
+  geom_smooth(data = day3, method='gam', se = FALSE, aes(color = "Day 3"))+
+  labs(x = "", y = expression(EE ~ (KiloJoules ~ h^-1)))+
+  guides(alpha = "none")+
+  facet_wrap(~sex) +
+  scale_colour_manual(name="Dehydration",values=cols, guide="none")
+EE
+
+activity <- ggplot(data = baseline,aes(x=as.POSIXct(time),y=Activity)) +
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(color = "Baseline", alpha=0.2))+
+  geom_point(data = day1, aes(color="Day 1", alpha=0.2))+
+  geom_point(data = day2, aes(color="Day 2", alpha=0.2))+
+  geom_point(data = day3, aes(color="Day 3", alpha=0.2))+
+  theme_classic()+
+  ylim(0,1500) +
+  geom_smooth(method='gam', se = FALSE, aes(color = "Baseline"))+
+  geom_smooth(data = day1, method='gam', se = FALSE, aes(color = "Day 1"))+
+  geom_smooth(data = day2, method='gam', se = FALSE, aes(color = "Day 2"))+
+  geom_smooth(data = day3, method='gam', se = FALSE, aes(color = "Day 3"))+
+  labs(x = "", y = "Activity")+
+  guides(alpha = "none")+
+  facet_wrap(~sex) +
+scale_colour_manual(name="Dehydration",values=cols, guide="none")
+activity
+
+water <- ggplot(data = baseline,aes(x=as.POSIXct(time),y=H2Omg)) +
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(color = "Baseline", alpha=0.2))+
+  geom_point(data = day1, aes(color="Day 1", alpha=0.2))+
+  geom_point(data = day2, aes(color="Day 2", alpha=0.2))+
+  geom_point(data = day3, aes(color="Day 3", alpha=0.2))+
+  theme_classic()+
+  ylim(0,7.5) +
+  geom_smooth(method='gam', se = FALSE, aes(color = "Baseline"))+
+  geom_smooth(data = day1, method='gam', se = FALSE, aes(color = "Day 1"))+
+  geom_smooth(data = day2, method='gam', se = FALSE, aes(color = "Day 2"))+
+  geom_smooth(data = day3, method='gam', se = FALSE, aes(color = "Day 3"))+
+  labs(x = "", y = "H2Omg")+
+  guides(alpha = "none")+
+  facet_wrap(~sex) +
+  scale_colour_manual(name="Dehydration",values=cols)
+water
+
+temperatures/activity/EE/water
+
+```
+
+```{r stats}
+EE_kJH_Act <- lm(data = baseline, formula = EE_kJH ~ Activity)
+
+```
+
+```{r other plots}
+
+timeofday <- as.POSIXct(mouse_metadata$time, tz="EST", origin = today(), origin = today(), format = "%H:%M:%S")
+body_temp <- ggplot(data = mouse_metadata[mouse_metadata$water == "yes",],
+                    aes(x=time,y=body_temp)) +
+  theme_classic()+
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  ylim(30,39) +
+  annotate("rect", xmin = as.POSIXct(today() + as_hms("00:00:01"), tz="EST"), 
+           xmax = as.POSIXct(today() + as_hms("06:00:00"), tz="EST"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct(today() + as_hms("21:00:00"), tz="EST"), 
+           xmax = as.POSIXct(today() + as_hms("23:59:59"), tz="EST"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(group=as.factor(water), 
+                 color=as.factor(water)), show.legend = FALSE)+
+  geom_smooth(method='gam')+
+  theme(axis.text.y=element_text(size=12))+
+  labs(x = "", y = "Body temp")+
+  guides(alpha = "none") +
+  #geom_line(data = chunk1, aes(x=as.POSIXct(DateTime), y=Deg_C))+
+  theme(axis.title.x=element_blank(), 
+               axis.text.y=element_text(size=12), 
+               axis.text.x=element_blank())
+body_temp
+
+temperature <- ggplot(data = chunk1,aes(x=as.POSIXct(StartTime),y=Deg_C)) +
+  theme_classic() +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_line(aes())+
+  labs(x = "", y = "Room Temp")+
+  guides(alpha = "none", size= "none") +
+  theme(axis.title.x=element_blank(), 
+               axis.text.y=element_text(size=12), 
+               axis.text.x=element_blank())
+temperature
+
+
+
+EE_multiday <- ggplot(data = lowfat_dehydration_noOL,aes(x=as.POSIXct(DateTime),y=EE)) +
+  annotate("rect", xmin = as.POSIXct("2022-10-06 12:00:00", tz="UTC"), 
+         xmax = as.POSIXct("2022-10-09 12:00:00", tz="UTC"), 
+         ymin = -Inf, ymax = Inf, fill="tan4", alpha=.1) +
+  geom_point(aes(group=as.factor(Animal_ID), color=as.factor(Animal_ID)), size = 2)+
+  theme_classic()+
+  scale_color_brewer("Animal ID", palette="Paired")+
+  theme(axis.text.y=element_text(size=12), legend.position = "none")+
+  #facet_wrap(~Sex)+
+  geom_smooth(method='loess', span=.2)+
+  labs(x = "", y = "EE")+
+  #theme(axis.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5)) +
+  guides(alpha = "none")
+EE_multiday
+
+
+mean_EE <- ggline(lowfat_dehydration_noOL, x=as.POSIXct(lowfat_dehydration_noOL$DateTime), y = lowfat_dehydration_noOL$EE, add = "mean_se")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 1)+
+  labs(y = "mean VO2")+
+  scale_x_discrete(breaks=seq(0, 100, 5))
+
+mean_water <- ggline(all_noOL, x = "hour", y = "H2Omg", add = "mean_se",color = "H2O", facet.by = "Sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 5.8)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean H2Omg")+
+  scale_x_discrete(breaks=seq(0, 100, 5))
+
+mean_RQ <- ggline(all_noOL, x = "hour", y = "RQ", add = "mean_se",color = "H2O", facet.by = "Sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 1.28)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  geom_hline(yintercept = .8907387)+
+  labs(y = "mean RQ")+
+  scale_x_discrete(breaks=seq(0, 100, 5))
+  
+temperature/EE/activity
+save("mean_EE", 35, 10, mean_EE)
+save("mean_water", 35, 10, mean_water)
+save("mean_RQ", 35, 10, mean_RQ)
+```
+
+######BODY TEMP
+
+```{r}
+dehydration_data$water<-as.factor(dehydration_data$H2O)
+dehydration_data$hour<-as.numeric(dehydration_data$hour)
+
+for (a in unique(dehydration_data$sex)) {
+  sexs <- subset(dehydration_data, sex == a)
+  for (b in unique(dehydration_data$hour)) {
+    hour <- subset(sexs, hour== b)
+    for (c in unique(dehydration_data$H2O)) {
+      print(c(a,b,c))
+      d1 <-subset(hour, H2O == "no", body_temp)
+      mean1 <- mean(d1$body_temp)
+      
+      d2 <-subset(hour, H2O == "yes", body_temp)
+      mean2 <- mean(d2$body_temp)
+      
+      print(power.t.test(n = 9, delta = mean1-mean2, sd = sd(hour$body_temp), sig.level = 0.05, power = NULL, type = "two.sample", alternative = "two.sided"))
+      print(var(subset(hour, H2O == c, body_temp)))
+      print(mean(hour$body_temp))
+    }
+  }
+}
+
+summary(d1)
+var(d1)
+
+require(pwr)
+
+pwr.anova.test(f=0.4,k=16,n=9,sig.level=0.05)
+
+delta_weight <- ggplot(dehydration_data, aes(x=hour, y=delta_weight, color=H2O))+
+  geom_point()+
+  geom_smooth()+
+  labs(x = "", y = "delta weight (g)")+
+  facet_wrap(~sex)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick","grey50"))+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c(""))
+
+weight <- ggplot(dehydration_data, aes(x=hour, y=weight, color=H2O))+
+  geom_point()+
+  geom_smooth()+
+  labs(x = "", y = "weight (g)")+
+  facet_wrap(~sex)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick", "grey50"))+
+    stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c("#050505", "#FF3338"))
+
+body_temp <- ggplot(dehydration_data, aes(x=hour, y=body_temp, color=H2O))+
+  geom_point()+
+  geom_smooth()+
+  labs(x = "", y = "body temperature (deg C)")+
+  facet_wrap(~sex)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick","grey50"))+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c("#050505", "#FF3338"))
+
+delta_temp <- ggplot(dehydration_data, aes(x=hour, y=delta_temp, color=H2O))+
+  geom_point()+
+  geom_smooth()+
+  labs(x = "", y = "delta body temperature (deg C)")+
+  facet_wrap(~sex)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick","grey50"))+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c("#050505", "#FF3338"))
+
+mean_delta_temp <- ggline(dehydration_data, x = "hour", y = "delta_temp", add = "mean_se",color = "H2O", facet.by = "sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = .5)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean delta temp")
+
+mean_body_temp <- ggline(dehydration_data, x = "hour", y = "body_temp", add = "mean_se",color = "H2O", facet.by = "sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 36.4)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean body temperature (deg C)")
+
+mean_delta_weight <- ggline(dehydration_data, x = "hour", y = "delta_weight", add = "mean_se",color = "H2O", facet.by = "sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = .34)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean delta weight")
+
+mean_weight <- ggline(dehydration_data, x = "hour", y = "weight", add = "mean_se",color = "H2O", facet.by = "sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 22.9)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean weight (g)")
+
+body_temp/delta_temp
+weight/delta_weight
+mean_body_temp/mean_delta_temp
+mean_weight/mean_delta_weight
+
+save("temp", 19, 19, mean_body_temp/mean_delta_temp)
+save("weight", 20, 20, mean_weight/mean_delta_weight)
+
+
+temp_test2 <- read.csv("~/Documents/UNH/metabolic chamber/dehydration/temp_test2.csv")
+temp_test2$hour <- as.numeric(temp_test2$hour)
+temp_test2$water <- as.factor(temp_test2$water)
+temp_test2$temp <- as.numeric(temp_test2$temp)
+
+body_temp2 <- ggline(temp_test2, x = "hour", y = "temp", add = "mean_se",color = "water", facet.by = c("time","sex"))+
+  stat_compare_means(aes(group = water), label = "p.signif",hide.ns = TRUE,label.y = 39)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  expand_limits(y=c(NA, 40))+
+  labs(y = "mean body temperature (deg C)")+
+  facet_grid(time~sex, margins = "time") 
+save("body_temp2", 20, 15, body_temp2)
+
+ggplot(temp_test2, aes(x=hour, y=temp, color=water))+
+  geom_point()+
+  geom_smooth(method = "auto")+
+  labs(x = "", y = " temperature (deg C)")+
+  facet_grid(time~sex, margins = TRUE)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick","grey50")) 
+ # stat_compare_means(aes(group = water), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c("#050505", "#FF3338"))
+
+
+coeff <- 0
+temperatures <- ggplot(data = test_day1_temps1,aes(x=as.POSIXct(Time),y=Temperature)) +
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(color = "Baseline", alpha=0.1))+
+  geom_point(data = chunk1, aes(x=as.POSIXct(time), y=Deg_C + coeff), size=1, color="black", shape=4)+
+     labs(x = "")+
+  theme_classic()+
+  geom_smooth(method='gam', se = FALSE, aes(color = "Baseline"), span=0.2)+
+  labs(x = "")+
+  scale_y_continuous(name = "Body Temperature (°C)", limits = c(20,40), sec.axis = sec_axis(~. - coeff, name="Room Temperature (°C)"))+ 
+  guides(alpha = "none")+
+  #facet_wrap(~sex) +
+ scale_colour_manual(name="Dehydration",values=cols, guide="none")
+temperatures
+
+
+
+
+
+```

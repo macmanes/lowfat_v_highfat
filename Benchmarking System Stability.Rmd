@@ -1,0 +1,549 @@
+---
+title: "Benchmarking System Stability"
+author: "MacManes"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+
+bring in libs
+
+```{r echo=FALSE}
+library(devtools)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(viridis)
+library(patchwork)
+library(tidyselect)
+library(readxl)
+library(broom)
+library(cowplot)
+library(DescTools)
+library(ggpubr)
+library(dplyr)
+library(pwr)
+library(Cairo)
+library(ggpattern)
+```
+
+
+```{r create environment}
+setwd("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/R")
+path <- "C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/"
+mouse_metadata <- read_excel("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/mouse_data.xlsx", na = "NA") %>% mutate(time = format(time, "%H:%M"))
+
+#source("C:/Users/mdm2000/OneDrive - USNH/Diet_paper/ExploreData_3_using gamm.R")
+source("functions.R")
+```
+
+
+```{r import data echo=FALSE, warning=FALSE}
+
+day0 <- bring_in_data("day0.csv")
+dayN <- bring_in_data("dayN.csv")
+```
+
+```{r manipulate data}
+
+#make activity data non-cumulative
+
+
+#subset out baseline data
+baseline <- c(7)
+day0_baseline <- day0 %>% 
+  filter(Animal %in% baseline)
+
+day0_baseline <- day0_baseline %>%  mutate(DateTime = round_date(ymd_hms(as.POSIXct(day0_baseline$DateTime)), unit="min"))
+
+dayN_baseline <- dayN %>% 
+  filter(Animal %in% baseline)
+
+dayN_baseline <- dayN_baseline %>%  mutate(DateTime = round_date(ymd_hms(as.POSIXct(dayN_baseline$DateTime)), unit="min"))
+
+```
+
+
+```{r make prelim plots}
+
+df <- as.data.frame(finalcages$Activity)
+plot_act <- ggplot(data = finalcages,aes(as.POSIXct(with(finalcages, StartDate + hms(StartTime))),y=Activity))
+plot_act <- plot_act + ylim(0,2000)
+plot_act <- plot_act + geom_point(aes(group=as.factor(Animal_ID), color=as.factor(Animal_ID)), size = 2)
+plot_act <- plot_act + theme_grey(base_size = 15)
+plot_act <- plot_act + geom_smooth(data=df$V1, method='loess', span=.14)
+plot_act <- plot_act + labs(x = "", y = "Activity")
+plot_act <- plot_act + scale_color_brewer("Animal ID", palette="Paired")
+plot_act <- plot_act + scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M")
+plot_act <- plot_act + theme(axis.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5))
+plot_act
+
+
+plot_act1 <- ggplot(data = finalcages,aes(x=as.POSIXct(StartTime),y=Activity))
+plot_act1 <- plot_act1 + ylim(0,2000)
+plot_act1 <- plot_act1 + geom_point(aes(group=as.factor(Animal_ID), color=as.factor(Animal_ID)), size = 2)
+plot_act1 <- plot_act1 + theme_grey(base_size = 15)
+plot_act1 <- plot_act1 + geom_smooth(data=df$V1, method='loess', span=.14)
+plot_act1 <- plot_act1 + labs(x = "", y = "Activity")
+plot_act1 <- plot_act1 + scale_color_brewer("Animal ID", palette="Paired")
+plot_act1 <- plot_act1 + scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M")
+plot_act1 <- plot_act1 + theme(axis.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5))
+plot_act1
+
+df <- as.data.frame(baseline_cage$Activity)
+plot_baseline <- ggplot(data = baseline_cage,aes(as.POSIXct(with(baseline_cage, StartDate + hms(StartTime))),y=Activity))
+plot_baseline <- plot_baseline + ylim(0,2000)
+plot_baseline <- plot_baseline + geom_point(aes(group=as.factor(animal), color=as.factor(animal)), size = 2)
+plot_baseline <- plot_baseline + theme_grey(base_size = 15)
+plot_baseline <- plot_baseline + geom_smooth(data=df$V1, method='loess', span=.14)
+plot_baseline <- plot_baseline + labs(x = "", y = "Activity")
+plot_baseline <- plot_baseline + scale_color_brewer("cages", palette="Paired")
+plot_baseline <- plot_baseline + scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M")
+plot_baseline <- plot_baseline + theme(axis.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5))
+plot_baseline
+ggplot_build(plot_baseline)$data[[2]]$y
+
+
+df <- as.data.frame(mouse_metadata$body_temp)
+lims <- as.POSIXct(strptime(c("00:00","23:59"), format = "%H:%M"))
+
+plot_temp <- ggplot(data = mouse_metadata,aes(x=as.POSIXct(time, tz="EST", format="%H:%M"),y=body_temp))
+plot_temp <- plot_temp + ylim(32,40)
+plot_temp <- plot_temp + geom_point(aes(group=as.factor(animal_id), color=as.factor(animal_id)), size = 2)
+plot_temp <- plot_temp + theme_grey(base_size = 15)
+plot_temp <- plot_temp + geom_smooth(data=df$V1, method='loess', span=0.4)
+plot_temp <- plot_temp + labs(x = "", y = "Temperature")
+plot_temp <- plot_temp + scale_color_brewer("Animal ID", palette="Paired")
+plot_temp <- plot_temp + scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M", limits=lims)
+plot_temp <- plot_temp + theme(axis.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5))
+plot_temp
+
+```
+
+all data
+
+```{r}
+females_dehy <- rbind(cages26july,cages03Aug,cages09Aug)
+males_dehy <- rbind(cages13Sep,cages20Sep, cages27Sep)
+
+unique(females_dehy$Animal_ID)
+unique(males_dehy$Animal_ID)
+
+unique(females_dehy$animal)
+females_dehy <- females_dehy %>%
+  mutate(H2O = case_when(
+    animal== "0" ~ "yes",
+    animal== "1" ~ "yes",
+    animal== "2" ~ "yes",
+    animal== "4" ~ "no",
+    animal== "5" ~ "no",
+    animal== "6" ~ "no",
+    ))
+
+unique(males_dehy$animal)
+males_dehy <- males_dehy %>%
+  mutate(H2O = case_when(
+    animal== "0" ~ "yes",
+    animal== "1" ~ "yes",
+    animal== "2" ~ "yes",
+    animal== "4" ~ "no",
+    animal== "5" ~ "no",
+    animal== "6" ~ "no",
+    ))
+```
+
+Establish day and night
+
+```{r}
+females_dehy$time_in_S <- period_to_seconds(hms(females_dehy$StartTime)) #Total seconds to reach that point in the day
+males_dehy$time_in_S <- period_to_seconds(hms(males_dehy$StartTime)) #Total seconds to reach that point in the day
+
+#Establish when each interval/transition starts and stops
+#Daytime interval: hrs:8:00-21:00
+daytime_interval <- period_to_seconds(hms("09:00:00")):period_to_seconds(hms("20:00:00"))
+#Night time: hrs 22:00-5:00 
+nighttime_interval <- c((period_to_seconds(hms("21:00:01")):period_to_seconds(hms("24:59:59"))), #evening portion of 'nighttime'
+                        (period_to_seconds(hms("00:00:00")):period_to_seconds(hms("06:00:00")))) #morning portion of 'nightitme'
+#Morning transition (t1): 6:00-9:00
+t1_interval <- period_to_seconds(hms("06:00:00")):period_to_seconds(hms("09:00:00"))
+#Evening transition (t2): 20-21:00
+t2_interval <- period_to_seconds(hms("20:00:00")):period_to_seconds(hms("21:00:00"))
+
+#### Create data subsets for males and females for each H2O (day, night, baseline [BL]) and each time block [e.g., t1/transition1, daytime, t2/transistion2, nighttime])
+# all males and females across all 3 H2Os (BL, hot, cold)
+all_M = males_dehy[males_dehy$Sex == 'Male', ]
+all_F = females_dehy[females_dehy$Sex == 'Female', ]
+
+females_dehy_day = all_F[all_F$time_in_S %in% daytime_interval, ]
+females_dehy_day$interval <- "light"
+ 
+females_dehy_night = all_F[all_F$time_in_S %in% nighttime_interval, ]
+females_dehy_night$interval <- "dark"
+
+females_dehy_t1 = all_F[all_F$time_in_S %in% t1_interval, ]
+females_dehy_t1$interval <- "T1"
+
+females_dehy_t2 = all_F[all_F$time_in_S %in% t2_interval, ]
+females_dehy_t2$interval <- "T2"
+
+males_dehy_day = all_M[all_M$time_in_S %in% daytime_interval, ]
+males_dehy_day$interval <- "light"
+  
+males_dehy_night = all_M[all_M$time_in_S %in% nighttime_interval, ]
+males_dehy_night$interval <- "dark"
+
+males_dehy_t1 = all_M[all_M$time_in_S %in% t1_interval, ]
+males_dehy_t1$interval <- "T1"
+
+males_dehy_t2 = all_M[all_M$time_in_S %in% t2_interval, ]
+males_dehy_t2$interval <- "T2"
+
+
+
+all_F <- rbind(females_dehy_day,females_dehy_night,females_dehy_t1,females_dehy_t2)
+
+all_M <- rbind(males_dehy_day,males_dehy_night,males_dehy_t1,males_dehy_t2)
+```
+
+# IDENTIFY AND REMOVE OUTLIERS
+
+### all
+
+```{r}
+count = 1
+dependent_variables = c("EE", "RQ", "VO2", "VCO2", "H2Omg", "Activity")
+varname_list = c("EE_OLs","RQ_OLs","VO2_OLs","VCO2_OLs","H2O_OLs", "Activity_OLs")
+
+for (DV in dependent_variables){
+  print(DV)
+    model <- lm(as.formula(paste0(DV, " ~ Animal_ID")), data = finalcages)
+  model.metrics <- augment(model) %>% select(-.hat, -.sigma, -.fitted)
+  summ <- model.metrics %>% filter(abs(.std.resid) > 3) %>% as.data.frame()
+
+    OL_list = c()
+  masterlist = c()
+  for (each_outlier_row in 1:nrow(summ)){
+    this_weight <- summ[each_outlier_row, "Animal_ID"]
+    this_DV  <- summ[each_outlier_row, DV]
+    OL_list <- c(OL_list, (which(finalcages$Animal_ID == this_weight & finalcages[DV] == this_DV)))
+
+  }
+  print(OL_list)
+  #Assign list of outliers to specified variable lists (OL_list_EE, RQ, VO2, VCO2, mgH2O)
+  assign(paste("OL_list_", DV, sep = ""), OL_list)  
+}
+
+masterlist <- c(OL_list_EE, OL_list_RQ, OL_list_VO2, OL_list_VCO2, OL_list_H2Omg, OL_list_Activity)
+masterlist_noDup <- unique(masterlist)
+
+all_noOL <- finalcages[-c(masterlist_noDup),]
+#write.csv(all_noOL_M, "all_noOL_M.csv", row.names = FALSE)
+```
+
+# IDENTIFY AND REMOVE OUTLIERS
+
+#### FEMALES
+
+will need to change all Animal_ID back to weight once I have it in the dataset
+
+```{r}
+count = 1
+dependent_variables = c("EE", "RQ", "VO2", "VCO2", "H2Omg")
+varname_list = c("EE_OLs","RQ_OLs","VO2_OLs","VCO2_OLs","H2O_OLs")
+
+for (DV in dependent_variables){
+  print(DV)
+  model <- lm(as.formula(paste0(DV, " ~ Animal_ID + H2O")), data = all_F)
+  model.metrics <- augment(model) %>% select(-.hat, -.sigma, -.fitted)
+  summ <- model.metrics %>% filter(abs(.std.resid) > 3) %>% as.data.frame()
+  OL_list = c()
+  masterlist = c()
+  for (each_outlier_row in 1:nrow(summ)){
+    this_weight <- summ[each_outlier_row, "Animal_ID"]
+    this_DV  <- summ[each_outlier_row, DV]
+    OL_list <- c(OL_list, (which(all_F$Animal_ID == this_weight & all_F[DV] == this_DV)))
+    
+  }
+  print(OL_list)
+  assign(paste("OL_list_", DV, sep = ""), OL_list)  
+}
+
+masterlist <- c(OL_list_EE, OL_list_RQ, OL_list_VO2, OL_list_VCO2, OL_list_H2Omg)
+masterlist_noDup <- unique(masterlist)
+all_noOL_F <- all_F[-c(masterlist_noDup),]
+#write.csv(all_noOL_F, "all_noOL_F.csv", row.names=FALSE)
+
+
+
+all_noOL <- rbind(all_noOL_F, all_noOL_M)
+```
+
+```{r}
+RQ <- ggplot(data = all_noOL,aes(x=as.numeric(DateTime),y=RQ))+
+  geom_rect(data = all_noOL, aes(xmin = 76032, xmax = 107474, ymin = -Inf, ymax = Inf, alpha = 0.4), fill = "grey84", color = "grey")+
+  geom_rect(data = all_noOL, aes(xmin = 162079 , xmax = 194341, ymin = -Inf, ymax = Inf,alpha = 0.4),fill = "grey84", color = "grey")+
+  geom_rect(data = all_noOL, aes(xmin = 249086 , xmax = 280528, ymin = -Inf, ymax = Inf,alpha = 0.4),fill = "grey84", color = "grey")+
+  geom_point(aes(alpha=0.5,color ="grey73"), size = 1)+
+  theme_classic()+
+  geom_smooth(method='loess', span=.1, level=0.99)+
+  guides(alpha = FALSE)+
+  scale_color_manual(values=c("grey73","firebrick","grey50"))+
+  geom_hline(yintercept = 0.8907387, color='black', size=0.5)+
+  #theme(axis.text.y=element_text(size=12))+
+  theme(axis.text.x=element_blank())+
+  labs(x = "", y = "RQ")+
+  #facet_wrap(~Sex)+
+  ylim(0.5, 1.5)
+
+
+EE <- ggplot(data = all_noOL,aes(x=as.POSIXct(StartTime),y=EE)) +
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(group=as.factor(Animal_ID), color=as.factor(Animal_ID)), size = 2)+
+  theme_classic()+
+  geom_smooth(method='gam')+
+  scale_color_brewer("Animal ID", palette="Paired")+
+  theme(axis.text.y=element_text(size=12), legend.position = "none")+
+  #facet_wrap(~Sex)+
+  labs(x = "", y = "EE")+
+  #theme(axis.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5)) +
+  guides(alpha = "none")
+EE
+
+activity <- ggplot(data = all_noOL,aes(x=as.POSIXct(StartTime),y=Activity)) +
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  ylim(0,2000) +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(group=as.factor(Animal_ID), color=as.factor(Animal_ID)), size = 2)+
+  theme_classic()+
+  geom_smooth(method='gam')+
+  scale_color_brewer("Animal ID", palette="Paired")+
+  theme(axis.text.y=element_text(size=12))+
+  #facet_wrap(~Sex)+
+  labs(x = "", y = "Activity")+
+  #theme(axis.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5)) +
+  guides(alpha = "none") +
+  theme(axis.title.x=element_blank(), 
+               axis.text.y=element_text(size=12), 
+               axis.text.x=element_blank())
+activity
+
+body_temp <- ggplot(data = mouse_metadata,
+                    aes(x=as.POSIXct(time, tz="EST", format="%H:%M"),y=body_temp)) +
+  theme_classic()+
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  ylim(32,40) +
+  annotate("rect", xmin = as.POSIXct("2022-10-05 00:00:01", tz="EST"), 
+           xmax = as.POSIXct("2022-10-05 06:00:00", tz="EST"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("2022-10-05 21:00:00", tz="EST"), 
+           xmax = as.POSIXct("2022-10-05 23:59:59", tz="EST"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(group=as.factor(animal_id), 
+                 color=as.factor(animal_id)), size = 2, show.legend = FALSE)+
+  geom_smooth(method='gam')+
+  scale_color_brewer("Animal ID", palette="Paired")+
+  theme(axis.text.y=element_text(size=12))+
+  #facet_wrap(~Sex)+
+  labs(x = "", y = "Body temp")+
+  #theme(axis.text.x = element_text(angle = 90, hjust = 0, vjust = 0.5)) +
+  guides(alpha = "none") +
+  theme(axis.title.x=element_blank(), 
+               axis.text.y=element_text(size=12), 
+               axis.text.x=element_blank())
+body_temp
+
+temperature <- ggplot(data = antiv,aes(x=as.POSIXct(StartTime),y=Deg_C)) +
+  theme_classic() +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_line(aes())+
+  labs(x = "", y = "Room Temp")+
+  guides(alpha = "none", size= "none") +
+  theme(axis.title.x=element_blank(), 
+               axis.text.y=element_text(size=12), 
+               axis.text.x=element_blank())
+temperature
+
+H2Omg_plot <- ggplot(data = all_noOL,aes(color = H2O, x=as.numeric(day_time),y=H2Omg))+
+  geom_rect(data = all_noOL, aes(xmin = 76032, xmax = 107474, ymin = -Inf, ymax = Inf, alpha = 0.4), fill = "grey84", color = "grey")+
+  geom_rect(data = all_noOL, aes(xmin = 162079 , xmax = 194341, ymin = -Inf, ymax = Inf,alpha = 0.4),fill = "grey84", color = "grey")+
+  geom_rect(data = all_noOL, aes(xmin = 249086 , xmax = 280528, ymin = -Inf, ymax = Inf,alpha = 0.4),fill = "grey84", color = "grey")+
+  geom_point(aes(alpha=0.5,color ="grey73"), size = 1)+
+  theme_classic()+
+  geom_smooth(method='loess', span=.1, level=0.99)+
+  guides(alpha = FALSE)+
+  scale_color_manual(values=c("grey73","firebrick","grey50"))+
+  geom_vline(xintercept = 129600)+
+  geom_vline(xintercept = 43200)+
+  geom_vline(xintercept = 216000)+
+  geom_vline(xintercept = 302400)+
+  #theme(axis.text.y=element_text(size=12))+
+  scale_x_time()+
+  facet_wrap(~Sex)+
+  labs(x = "", y = "RWL")
+
+mean_EE <- ggline(all_noOL, x = "hour", y = "EE", add = "mean_se",color = "H2O", facet.by = "Sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 1)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean VO2")+
+  scale_x_discrete(breaks=seq(0, 100, 5))
+
+mean_water <- ggline(all_noOL, x = "hour", y = "H2Omg", add = "mean_se",color = "H2O", facet.by = "Sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 5.8)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean H2Omg")+
+  scale_x_discrete(breaks=seq(0, 100, 5))
+
+mean_RQ <- ggline(all_noOL, x = "hour", y = "RQ", add = "mean_se",color = "H2O", facet.by = "Sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 1.28)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  geom_hline(yintercept = .8907387)+
+  labs(y = "mean RQ")+
+  scale_x_discrete(breaks=seq(0, 100, 5))
+  
+temperature/EE/activity
+save("mean_EE", 35, 10, mean_EE)
+save("mean_water", 35, 10, mean_water)
+save("mean_RQ", 35, 10, mean_RQ)
+```
+
+######BODY TEMP
+
+```{r}
+dehydration_data$water<-as.factor(dehydration_data$H2O)
+dehydration_data$hour<-as.numeric(dehydration_data$hour)
+
+for (a in unique(dehydration_data$sex)) {
+  sexs <- subset(dehydration_data, sex == a)
+  for (b in unique(dehydration_data$hour)) {
+    hour <- subset(sexs, hour== b)
+    for (c in unique(dehydration_data$H2O)) {
+      print(c(a,b,c))
+      d1 <-subset(hour, H2O == "no", body_temp)
+      mean1 <- mean(d1$body_temp)
+      
+      d2 <-subset(hour, H2O == "yes", body_temp)
+      mean2 <- mean(d2$body_temp)
+      
+      print(power.t.test(n = 9, delta = mean1-mean2, sd = sd(hour$body_temp), sig.level = 0.05, power = NULL, type = "two.sample", alternative = "two.sided"))
+      print(var(subset(hour, H2O == c, body_temp)))
+      print(mean(hour$body_temp))
+    }
+  }
+}
+
+summary(d1)
+var(d1)
+
+require(pwr)
+
+pwr.anova.test(f=0.4,k=16,n=9,sig.level=0.05)
+
+delta_weight <- ggplot(dehydration_data, aes(x=hour, y=delta_weight, color=H2O))+
+  geom_point()+
+  geom_smooth()+
+  labs(x = "", y = "delta weight (g)")+
+  facet_wrap(~sex)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick","grey50"))+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c(""))
+
+weight <- ggplot(dehydration_data, aes(x=hour, y=weight, color=H2O))+
+  geom_point()+
+  geom_smooth()+
+  labs(x = "", y = "weight (g)")+
+  facet_wrap(~sex)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick", "grey50"))+
+    stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c("#050505", "#FF3338"))
+
+body_temp <- ggplot(dehydration_data, aes(x=hour, y=body_temp, color=H2O))+
+  geom_point()+
+  geom_smooth()+
+  labs(x = "", y = "body temperature (deg C)")+
+  facet_wrap(~sex)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick","grey50"))+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c("#050505", "#FF3338"))
+
+delta_temp <- ggplot(dehydration_data, aes(x=hour, y=delta_temp, color=H2O))+
+  geom_point()+
+  geom_smooth()+
+  labs(x = "", y = "delta body temperature (deg C)")+
+  facet_wrap(~sex)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick","grey50"))+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c("#050505", "#FF3338"))
+
+mean_delta_temp <- ggline(dehydration_data, x = "hour", y = "delta_temp", add = "mean_se",color = "H2O", facet.by = "sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = .5)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean delta temp")
+
+mean_body_temp <- ggline(dehydration_data, x = "hour", y = "body_temp", add = "mean_se",color = "H2O", facet.by = "sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 36.4)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean body temperature (deg C)")
+
+mean_delta_weight <- ggline(dehydration_data, x = "hour", y = "delta_weight", add = "mean_se",color = "H2O", facet.by = "sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = .34)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean delta weight")
+
+mean_weight <- ggline(dehydration_data, x = "hour", y = "weight", add = "mean_se",color = "H2O", facet.by = "sex")+
+  stat_compare_means(aes(group = H2O), label = "p.signif",hide.ns = TRUE,label.y = 22.9)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  labs(y = "mean weight (g)")
+
+body_temp/delta_temp
+weight/delta_weight
+mean_body_temp/mean_delta_temp
+mean_weight/mean_delta_weight
+
+save("temp", 19, 19, mean_body_temp/mean_delta_temp)
+save("weight", 20, 20, mean_weight/mean_delta_weight)
+
+
+temp_test2 <- read.csv("~/Documents/UNH/metabolic chamber/dehydration/temp_test2.csv")
+temp_test2$hour <- as.numeric(temp_test2$hour)
+temp_test2$water <- as.factor(temp_test2$water)
+temp_test2$temp <- as.numeric(temp_test2$temp)
+
+body_temp2 <- ggline(temp_test2, x = "hour", y = "temp", add = "mean_se",color = "water", facet.by = c("time","sex"))+
+  stat_compare_means(aes(group = water), label = "p.signif",hide.ns = TRUE,label.y = 39)+
+  scale_color_manual(values=c("firebrick","grey50")) +
+  expand_limits(y=c(NA, 40))+
+  labs(y = "mean body temperature (deg C)")+
+  facet_grid(time~sex, margins = "time") 
+save("body_temp2", 20, 15, body_temp2)
+
+ggplot(temp_test2, aes(x=hour, y=temp, color=water))+
+  geom_point()+
+  geom_smooth(method = "auto")+
+  labs(x = "", y = " temperature (deg C)")+
+  facet_grid(time~sex, margins = TRUE)+
+  scale_x_continuous(breaks=seq(0, 72, 24))+
+  scale_color_manual(values=c("firebrick","grey50")) 
+ # stat_compare_means(aes(group = water), label = "p.signif",hide.ns = TRUE)
+  #scale_color_manual(legend_title, values=c("#050505", "#FF3338"))
+
+```
