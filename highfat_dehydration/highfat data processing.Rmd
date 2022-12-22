@@ -79,6 +79,35 @@ hdr1_temps <- bring_in_temps_highfat_rep1("temps_rep1.csv")
 
 
 ```{r manipulate data REP1}
+
+###### fix chunk 1
+
+chunk1 <- chunk1 %>% 
+  add_column(MOD_ADX = chunk1_act$MOD_ADX) %>%
+  mutate(Activity = MOD_ADX - lag(MOD_ADX, default = 0))
+
+#dates <- unique(chunk5$date)
+#chunk5$day <- match(chunk5$date, dates)
+
+#subset out baseline data
+baseline <- c(7)
+baseline_cage <- chunk1 %>% 
+  filter(Animal %in% baseline)
+
+#subset out animal data
+target <- c(0,1,2,3,4,5,6)
+cages <- chunk1 %>% 
+  filter(Animal %in% target)
+
+cages <- cages %>% 
+  dplyr::select(Animal_ID, sex, DateTime, date, time, weight, Activity, EE_KCalH, EE_kJH, H2Omg, 
+         H2Oml, Deg_C, CO2, VO2, VCO2, RQ, SD_VO2, SD_VCO2, SD_H2Oml, 
+         SD_H2Omg, SS4_FR, H2O_WVP, BP)
+
+chunk1 <- cages
+
+
+
 ################### hdr1
 
 #make activity data non-cumulative
@@ -95,7 +124,7 @@ baseline_cage <- hdr1 %>%
 
 
 #subset out animal data
-target <- c(0,1,2,3,4,5,6)
+target <- c(0,1,2,3,4,5)
 cages <- hdr1 %>% 
   filter(Animal %in% target)
 
@@ -137,13 +166,13 @@ highfat_dehydration_noOL_rep1 <- hdr1_cages[-c(masterlist_noDup),]
 ```
 
 ```{r make experimental intervals}
-rep1_water_removal <- ymd_hms("2022-12-17 11:59:59", tz="EST")
-baseline_rep1 <- interval(rep1_water_removal - days(30), rep1_water_removal)
+rep1_water_removal <- ymd_hms("2022-12-19 11:59:59", tz="EST")
+baseline_rep1 <- interval(rep1_water_removal - days(3), rep1_water_removal)
 day1_rep1 <- interval(rep1_water_removal, rep1_water_removal + days(1))
 day2_rep1 <- interval(rep1_water_removal + days(1), rep1_water_removal + days(2))
 day3_rep1 <- interval(rep1_water_removal + days(2), rep1_water_removal + days(3))
 
-baseline_temp_rep1 <- interval(rep1_water_removal - days(30), rep1_water_removal)
+baseline_temp_rep1 <- interval(rep1_water_removal - days(3), rep1_water_removal)
 
 ```
 
@@ -224,7 +253,7 @@ temperatures <- ggplot(data = hdr1_temps ,aes(x=as.POSIXct(time),y=body_temp)) +
   geom_point(data = day1_temps, aes(color="Day 1", alpha=0.2), shape=20, size=0.5)+
   geom_point(data = day2_temps, aes(color="Day 2", alpha=0.2), shape=20, size=0.5)+
   geom_point(data = day3_temps, aes(color="Day 3", alpha=0.2), shape=20, size=0.5)+
-  #geom_point(data = chunk1, aes(x=as.POSIXct(time), y=Deg_C + coeff), size=1, color="black", shape=4)+
+  geom_point(data = chunk1, aes(x=as.POSIXct(time), y=Deg_C + coeff), size=1, color="black", shape=4)+
      labs(x = "")+
   theme_classic()+
   geom_smooth(method='gam', se = FALSE, aes(color = "Baseline"), span=0.2, size=2)+

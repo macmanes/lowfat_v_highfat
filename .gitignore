@@ -1,7 +1,4 @@
+*.csv
+*.xlsx
+*.tiff
 .Rproj.user
-.Rhistory
-.RData
-.Ruserdata
-.csv
-.xlsx
-.tiff
