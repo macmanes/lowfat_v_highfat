@@ -246,7 +246,7 @@ bring_in_temps_highfat_rep1 <- function(data_file)
            ifelse(AntennaID == 6, mouse_metadata_highfat_rep1$sex[mouse_metadata_highfat_rep1$cage == 6][1],
            ifelse(AntennaID == 7, mouse_metadata_highfat_rep1$sex[mouse_metadata_highfat_rep1$cage == 0][1], NA))))))))
   
-  target <- c(0,1,2,3,4,5,7)
+  target <- c(0,1,2,3,4,5,6,7)
   tempscages <- rawtemps %>% filter(AntennaID %in% target)
   
   return(tempscages)

@@ -334,7 +334,7 @@ water <- ggplot(data = baseline,aes(x=as.POSIXct(time),y=H2Omg)) +
   geom_point(data = day2, aes(color="Day 2", alpha=0.2))+
   geom_point(data = day3, aes(color="Day 3", alpha=0.2))+
   theme_classic()+
-  ylim(0,7.5) +
+  ylim(-1,7.5) +
   geom_smooth(method='gam', se = FALSE, aes(color = "Baseline"))+
   geom_smooth(data = day1, method='gam', se = FALSE, aes(color = "Day 1"))+
   geom_smooth(data = day2, method='gam', se = FALSE, aes(color = "Day 2"))+
