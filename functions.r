@@ -164,6 +164,59 @@ bring_in_data_rep3 <- function(data_file)
 }
 
 
+bring_in_data_lowfat_rep4 <- function(data_file)
+{
+  data <- paste(path,data_file,sep="")
+  raw <- read_csv(data, skip_empty_rows=TRUE,
+                  col_types = cols(Animal = col_integer(), 
+                                   deltaCO2 = col_double(), 
+                                   deltaH2O = col_double(),
+                                   H2Oml = col_double(),
+                                   Deg_C = col_double(),
+                                   VCO2 = col_double()))
+  
+  
+  raw <- raw %>% 
+    mutate(EE_KCalH = 0.06*(3.941*VO2 + 1.106*VCO2)) %>%
+    mutate(EE_kJH = 4.1868*0.06*(3.941*VO2 + 1.106*VCO2)) %>%
+    mutate(RQ = VCO2/VO2) %>%
+    rename(c("StartTime" = "time", "StartDate" = "date")) %>%
+    mutate(date, date = as.POSIXlt(date, format = "%d-%b-%y", tz="EST")) %>%
+    unite("DateTime", date:time, remove = FALSE, sep =  " ") %>%
+    #mutate(DateTime = with_tz(DateTime, tz="EST") + hours(1)) %>%
+    mutate(weight = 
+             ifelse(Animal == 0, mean(mouse_metadata_lowfat_rep4$weight[mouse_metadata_lowfat_rep4$cage == 0], na.rm = TRUE), 
+             ifelse(Animal == 1, mean(mouse_metadata_lowfat_rep4$weight[mouse_metadata_lowfat_rep4$cage == 1], na.rm = TRUE),
+             ifelse(Animal == 2, mean(mouse_metadata_lowfat_rep4$weight[mouse_metadata_lowfat_rep4$cage == 2], na.rm = TRUE),
+             ifelse(Animal == 3, mean(mouse_metadata_lowfat_rep4$weight[mouse_metadata_lowfat_rep4$cage == 3], na.rm = TRUE),
+             ifelse(Animal == 4, mean(mouse_metadata_lowfat_rep4$weight[mouse_metadata_lowfat_rep4$cage == 4], na.rm = TRUE),
+             ifelse(Animal == 5, mean(mouse_metadata_lowfat_rep4$weight[mouse_metadata_lowfat_rep4$cage == 5], na.rm = TRUE),
+             ifelse(Animal == 6, mean(mouse_metadata_lowfat_rep4$weight[mouse_metadata_lowfat_rep4$cage == 6], na.rm = TRUE), NA)))))))) %>% 
+    mutate(sex = 
+             ifelse(Animal == 0, na.omit(mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 0])[1], 
+             ifelse(Animal == 1, na.omit(mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 1])[1],
+             ifelse(Animal == 2, na.omit(mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 2])[1],
+             ifelse(Animal == 3, na.omit(mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 3])[1],
+             ifelse(Animal == 4, na.omit(mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 4])[1],
+             ifelse(Animal == 5, na.omit(mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 5])[1],
+             ifelse(Animal == 6, na.omit(mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 6])[1], NA)))))))) %>% 
+    mutate(Animal_ID = 
+             ifelse(Animal == 0, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 0][1], 
+             ifelse(Animal == 1, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 1][1],
+             ifelse(Animal == 2, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 2][1],
+             ifelse(Animal == 3, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 3][1],
+             ifelse(Animal == 4, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 4][1],
+             ifelse(Animal == 5, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 5][1],
+             ifelse(Animal == 6, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 6][1], NA)))))))) 
+  
+  target <- c(0,1,2,3,5,6,7)
+  cages <- raw %>% filter(Animal %in% target)
+  
+  return(cages)
+}
+
+
+
 bring_in_data_highfat_rep1 <- function(data_file)
 {
   data <- paste(path,data_file,sep="")
