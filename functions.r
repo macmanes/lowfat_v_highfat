@@ -6,7 +6,6 @@
 #  LabDiet 5015 = (26.101/100).71+(19.752/100).83+.54148 = .8907387
 #  LabDiet low fat 5015 = (22.8/100).71+(6.6/100).83+.706 = .92266
 
-
 #import data function
 bring_in_data_rep1 <- function(data_file)
 {
@@ -492,6 +491,43 @@ bring_in_temps_highfat_rep3 <- function(data_file)
 }
 
 
+#########################bring_in_temps_lowfat_rep4
+
+bring_in_temps_lowfat_rep4 <- function(data_file)
+{
+  data <- paste(path,data_file,sep="")
+  rawtemps <- read_csv(data, skip_empty_rows=TRUE,
+                       col_types = cols(date = col_date(format = "%m/%d/%Y"),
+                                        AntennaID = col_integer(), 
+                                        body_temp = col_double(),
+                                        time = col_time(format = "%H:%M:%S")), na = "")
+  
+  rawtemps <- rawtemps %>% 
+    mutate(date, date = as.Date(date, format = "%Y-%m-%f", tz="EST")) %>%
+    unite("DateTime", date:time, remove = FALSE, sep =  " ") %>%
+    mutate(DateTime = as.POSIXlt(DateTime, tz="EST")) %>%
+    mutate(Animal_ID = 
+             ifelse(AntennaID == 1, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 1][1], 
+             ifelse(AntennaID == 2, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 2][1],
+             ifelse(AntennaID == 3, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 3][1],
+             ifelse(AntennaID == 4, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 4][1],
+             ifelse(AntennaID == 5, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 5][1],
+             ifelse(AntennaID == 6, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 6][1],
+             ifelse(AntennaID == 7, mouse_metadata_lowfat_rep4$animal_id[mouse_metadata_lowfat_rep4$cage == 0][1], NA)))))))) %>%
+    mutate(sex = 
+             ifelse(AntennaID == 1, mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 1][1], 
+             ifelse(AntennaID == 2, mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 2][1],
+             ifelse(AntennaID == 3, mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 3][1],
+             ifelse(AntennaID == 4, mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 4][1],
+             ifelse(AntennaID == 5, mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 5][1],
+             ifelse(AntennaID == 6, mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 6][1],
+             ifelse(AntennaID == 7, mouse_metadata_lowfat_rep4$sex[mouse_metadata_lowfat_rep4$cage == 0][1], NA))))))))
+  
+  target <- c(0,1,2,3,4,5,6,7)
+  tempscages <- rawtemps %>% filter(AntennaID %in% target)
+  
+  return(tempscages)
+}
 
 
 
