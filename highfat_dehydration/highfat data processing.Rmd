@@ -69,6 +69,15 @@ mouse_metadata_highfat_rep3 <- read_excel("C:/Users/mdm2000/OneDrive - USNH/Pero
         "numeric", "numeric", "numeric", 
         "numeric", "text"))
 
+mouse_metadata_highfat_rep4 <- read_excel("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/mouse_data.xlsx", 
+    sheet = "rep4_highfat", col_types = c("text", 
+        "numeric", "numeric", "text", "text", 
+        "numeric", "text", "text", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "text"))
+
 ```
 
 
@@ -125,6 +134,15 @@ hdr3b_act <- read_csv("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/high
 
 hdr3_temps <- bring_in_temps_highfat_rep3("temps_rep3.csv")
 
+#this is the physiology data for the dehydration part of the highfat experiment rep4
+
+path <- "C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep4/"
+hdr4 <- bring_in_data_highfat_rep4("highfat_dehydrated_rep4.csv")
+hdr4 <- hdr4 %>% mutate(DateTime = with_tz(DateTime, tz="EST"))
+hdr4_act <- read_csv("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep4/highfat_dehydrated_rep4_activity.csv", n_max=dim(hdr4)[1])
+
+hdr4_temps <- bring_in_temps_highfat_rep4("temps_rep4.csv")
+
 ```
 
 
@@ -160,8 +178,7 @@ chunk1 <- cages
 
 ############# subset temp data
 
-#subset out animal data
-target <- c(0,1,2,3,4,5)
+target <- c(1,2,3,4,5,6,7)
 hdr1_temps_select <- hdr1_temps %>% 
   filter(AntennaID %in% target)
 
@@ -231,6 +248,15 @@ highfat_dehydration_noOL_rep1 <- hdr1_cages[-c(masterlist_noDup),]
 
 ################### hdr2
 
+
+############# subset temp data
+
+target <- c(3,4,5,6,7)
+hdr2_temps_select <- hdr2_temps %>% 
+  filter(AntennaID %in% target)
+
+hdr2_temps <- hdr2_temps_select
+
 #make activity data non-cumulative
 hdr2 <- hdr2 %>% 
   add_column(MOD_ADX = hdr2_act$MOD_ADX) %>%
@@ -289,6 +315,16 @@ highfat_dehydration_noOL_rep2 <- hdr2_cages[-c(masterlist_noDup),]
 
 
 ```{r manipulate data REP3}
+
+
+############# subset temp data
+
+target <- c(1,3,4,5,6,7)
+hdr3_temps_select <- hdr3_temps %>% 
+  filter(AntennaID %in% target)
+
+hdr3_temps <- hdr3_temps_select
+
 
 ################### hdr3a
 
@@ -408,6 +444,75 @@ highfat_dehydration_noOL_rep3 <- rbind(highfat_dehydration_noOL_rep3a,highfat_de
 ```
 
 
+```{r manipulate data REP4}
+
+
+############# subset temp data
+
+target <- c(1,2,3,4,5,6,7)
+hdr4_temps_select <- hdr4_temps %>% 
+  filter(AntennaID %in% target)
+
+hdr4_temps <- hdr4_temps_select
+
+################### hdr4
+
+#make activity data non-cumulative
+hdr4 <- hdr4 %>% 
+  add_column(MOD_ADX = hdr4_act$MOD_ADX) %>%
+  mutate(Activity = MOD_ADX - lag(MOD_ADX, default = 0))
+
+
+
+#subset out baseline data
+baseline <- c(7)
+baseline_cage <- hdr4 %>% 
+  filter(Animal %in% baseline)
+
+
+#subset out animal data
+target <- c(0,1,2,3,4,5,6)
+cages <- hdr4 %>% 
+  filter(Animal %in% target)
+
+cages <- cages %>% 
+  dplyr::select(Animal_ID, sex, DateTime, date, time, weight, Activity, EE_KCalH, EE_kJH, H2Omg, 
+         H2Oml, Deg_C, CO2, VO2, VCO2, RQ, SD_VO2, SD_VCO2, SD_H2Oml, 
+         SD_H2Omg, SS4_FR, H2O_WVP, BP)
+
+hdr4_cages <- cages
+
+
+count = 1
+dependent_variables = c("EE_kJH", "RQ", "VO2", "VCO2", "H2Omg", "Activity")
+varname_list = c("EE_OLs","RQ_OLs","VO2_OLs","VCO2_OLs","H2O_OLs", "Activity_OLs")
+
+for (DV in dependent_variables){
+  print(DV)
+    model <- lm(as.formula(paste0(DV, " ~ Animal_ID")), data = hdr4_cages)
+  model.metrics <- augment(model) %>% dplyr::select(-.hat, -.sigma, -.fitted)
+  summ <- model.metrics %>% filter(abs(.std.resid) > 2) %>% as.data.frame()
+
+    OL_list = c()
+  masterlist = c()
+  for (each_outlier_row in 1:nrow(summ)){
+    this_weight <- summ[each_outlier_row, "Animal_ID"]
+    this_DV  <- summ[each_outlier_row, DV]
+    OL_list <- c(OL_list, (which(hdr4_cages$Animal_ID == this_weight & hdr4_cages[DV] == this_DV)))
+
+  }
+  print(OL_list)
+  #Assign list of outliers to specified variable lists (OL_list_EE_kJH, RQ, VO2, VCO2, mgH2O)
+  assign(paste("OL_list_", DV, sep = ""), OL_list)  
+}
+
+masterlist <- c(OL_list_EE_kJH, OL_list_RQ, OL_list_VO2, OL_list_VCO2, OL_list_H2Omg, OL_list_Activity)
+masterlist_noDup <- unique(masterlist)
+
+highfat_dehydration_noOL_rep4 <- hdr4_cages[-c(masterlist_noDup),]
+```
+
+
 
 
 ```{r make experimental intervals}
@@ -442,6 +547,15 @@ day3_rep3 <- interval(rep3_water_removal + days(2), rep3_water_removal + days(3)
 
 baseline_temp_rep3 <- interval(rep3_water_removal - days(3), rep3_water_removal)
 
+### REP4
+
+rep4_water_removal <- ymd_hms("2023-01-16 11:59:59", tz="EST")
+baseline_rep4 <- interval(rep4_water_removal - days(3), rep4_water_removal)
+day1_rep4 <- interval(rep4_water_removal, rep4_water_removal + days(1))
+day2_rep4 <- interval(rep4_water_removal + days(1), rep4_water_removal + days(2))
+day3_rep4 <- interval(rep4_water_removal + days(2), rep4_water_removal + days(3))
+
+baseline_temp_rep4 <- interval(rep4_water_removal - days(3), rep4_water_removal)
 
 ```
 
@@ -504,6 +618,25 @@ write.csv(highfat_dehydration_noOL_rep3, "highfat_dehydration_rep3.csv", row.nam
 ```
 
 
+```{r add metadata REP4}
+
+
+highfat_dehydration_noOL_rep4 <- highfat_dehydration_noOL_rep4 %>%
+    mutate(replicate = "rep4")
+
+highfat_dehydration_noOL_rep4 <- highfat_dehydration_noOL_rep4 %>%
+    add_column(experiment_day = NA)
+
+
+highfat_dehydration_noOL_rep4$experiment_day[highfat_dehydration_noOL_rep4$DateTime %within% baseline_rep4 == "TRUE"] <- "baseline"
+highfat_dehydration_noOL_rep4$experiment_day[highfat_dehydration_noOL_rep4$DateTime %within% day1_rep4 == "TRUE"] <- "day1"
+highfat_dehydration_noOL_rep4$experiment_day[highfat_dehydration_noOL_rep4$DateTime %within% day2_rep4 == "TRUE"] <- "day2"
+highfat_dehydration_noOL_rep4$experiment_day[highfat_dehydration_noOL_rep4$DateTime %within% day3_rep4 == "TRUE"] <- "day3"
+write.csv(highfat_dehydration_noOL_rep4, "highfat_dehydration_rep4.csv", row.names = FALSE)
+
+```
+
+
 
 ```{r merge reps for differert days}
 ###### make data frames that contain all the data for a given interval. 
@@ -513,22 +646,26 @@ write.csv(highfat_dehydration_noOL_rep3, "highfat_dehydration_rep3.csv", row.nam
 baseline_temps <-
   rbind(hdr1_temps[hdr1_temps$DateTime %within% baseline_temp_rep1,],
         hdr2_temps[hdr2_temps$DateTime %within% baseline_temp_rep2,],
-        hdr3_temps[hdr3_temps$DateTime %within% baseline_temp_rep3,])
+        hdr3_temps[hdr3_temps$DateTime %within% baseline_temp_rep3,],
+        hdr4_temps[hdr4_temps$DateTime %within% baseline_temp_rep4,])
 
 day1_temps <-
   rbind(hdr1_temps[hdr1_temps$DateTime %within% day1_rep1,],
         hdr2_temps[hdr2_temps$DateTime %within% day1_rep2,],
-        hdr3_temps[hdr3_temps$DateTime %within% day1_rep3,])
+        hdr3_temps[hdr3_temps$DateTime %within% day1_rep3,],
+        hdr4_temps[hdr4_temps$DateTime %within% day1_rep4,])
 
 day2_temps <-
   rbind(hdr1_temps[hdr1_temps$DateTime %within% day2_rep1,],
         hdr2_temps[hdr2_temps$DateTime %within% day2_rep2,],
-        hdr3_temps[hdr3_temps$DateTime %within% day2_rep3,])
+        hdr3_temps[hdr3_temps$DateTime %within% day2_rep3,],
+        hdr4_temps[hdr4_temps$DateTime %within% day2_rep4,])
 
 day3_temps <-
   rbind(hdr1_temps[hdr1_temps$DateTime %within% day3_rep1,],
         hdr2_temps[hdr2_temps$DateTime %within% day3_rep2,],
-        hdr3_temps[hdr3_temps$DateTime %within% day3_rep3,])
+        hdr3_temps[hdr3_temps$DateTime %within% day3_rep3,],
+        hdr4_temps[hdr4_temps$DateTime %within% day3_rep4,])
 
 
 
@@ -537,46 +674,84 @@ day3_temps <-
 baseline <- 
   rbind(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% baseline_rep1,],
         highfat_dehydration_noOL_rep2[highfat_dehydration_noOL_rep2$DateTime %within% baseline_rep2,],
-        highfat_dehydration_noOL_rep3[highfat_dehydration_noOL_rep3$DateTime %within% baseline_rep3,])
+        highfat_dehydration_noOL_rep3[highfat_dehydration_noOL_rep3$DateTime %within% baseline_rep3,],
+        highfat_dehydration_noOL_rep4[highfat_dehydration_noOL_rep4$DateTime %within% baseline_rep4,])
 
 day1 <-
   rbind(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% day1_rep1,],
         highfat_dehydration_noOL_rep2[highfat_dehydration_noOL_rep2$DateTime %within% day1_rep2,],
-        highfat_dehydration_noOL_rep3[highfat_dehydration_noOL_rep3$DateTime %within% day1_rep3,])
+        highfat_dehydration_noOL_rep3[highfat_dehydration_noOL_rep3$DateTime %within% day1_rep3,],
+        highfat_dehydration_noOL_rep4[highfat_dehydration_noOL_rep4$DateTime %within% day1_rep4,])
 
 
 day2 <-
   rbind(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% day2_rep1,],
         highfat_dehydration_noOL_rep2[highfat_dehydration_noOL_rep2$DateTime %within% day2_rep2,],
-        highfat_dehydration_noOL_rep3[highfat_dehydration_noOL_rep3$DateTime %within% day2_rep3,])
+        highfat_dehydration_noOL_rep3[highfat_dehydration_noOL_rep3$DateTime %within% day2_rep3,],
+        highfat_dehydration_noOL_rep4[highfat_dehydration_noOL_rep4$DateTime %within% day2_rep4,])
 
 
 day3 <-
   rbind(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% day3_rep1,],
         highfat_dehydration_noOL_rep2[highfat_dehydration_noOL_rep2$DateTime %within% day3_rep2,],
-        highfat_dehydration_noOL_rep3[highfat_dehydration_noOL_rep3$DateTime %within% day3_rep3,])
+        highfat_dehydration_noOL_rep3[highfat_dehydration_noOL_rep3$DateTime %within% day3_rep3,],
+        highfat_dehydration_noOL_rep4[highfat_dehydration_noOL_rep4$DateTime %within% day3_rep4,])
 
-all_data <- rbind(highfat_dehydration_noOL_rep1,highfat_dehydration_noOL_rep2,highfat_dehydration_noOL_rep3)
+all_data <- rbind(highfat_dehydration_noOL_rep1,highfat_dehydration_noOL_rep2,highfat_dehydration_noOL_rep3,highfat_dehydration_noOL_rep4)
 
-dim(hdr1_temps[hdr1_temps$DateTime %within% baseline_temp_rep1,])
-dim(hdr2_temps[hdr2_temps$DateTime %within% baseline_temp_rep2,])
-dim(hdr1_temps[hdr1_temps$DateTime %within% day1_rep1,])
-dim(hdr2_temps[hdr2_temps$DateTime %within% day1_rep2,])
-dim(hdr1_temps[hdr1_temps$DateTime %within% day1_rep1,])
-dim(hdr2_temps[hdr2_temps$DateTime %within% day1_rep2,])
-dim(hdr1_temps[hdr1_temps$DateTime %within% day3_rep1,])
-dim(hdr2_temps[hdr2_temps$DateTime %within% day3_rep2,])
-dim(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% baseline_rep1,])
-dim(highfat_dehydration_noOL_rep2[highfat_dehydration_noOL_rep2$DateTime %within% baseline_rep2,])
-dim(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% day1_rep1,])
-dim(highfat_dehydration_noOL_rep2[highfat_dehydration_noOL_rep2$DateTime %within% day1_rep2,])
-dim(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% day2_rep1,])
-dim(highfat_dehydration_noOL_rep2[highfat_dehydration_noOL_rep2$DateTime %within% day2_rep2,])
-dim(highfat_dehydration_noOL_rep1[highfat_dehydration_noOL_rep1$DateTime %within% day3_rep1,])
-dim(highfat_dehydration_noOL_rep2[highfat_dehydration_noOL_rep2$DateTime %within% day3_rep2,])
+all_temps <- rbind(baseline_temps,day1_temps,day2_temps,day3_temps)
+
+dim(hdr4_temps[hdr4_temps$DateTime %within% baseline_temp_rep4,])
+dim(hdr4_temps[hdr4_temps$DateTime %within% day1_rep4,])
+dim(hdr4_temps[hdr4_temps$DateTime %within% day2_rep4,])
+dim(hdr4_temps[hdr4_temps$DateTime %within% day3_rep4,])
+
+
+dim(highfat_dehydration_noOL_rep4[highfat_dehydration_noOL_rep4$DateTime %within% baseline_rep4,])
+dim(highfat_dehydration_noOL_rep4[highfat_dehydration_noOL_rep4$DateTime %within% day1_rep4,])
+dim(highfat_dehydration_noOL_rep4[highfat_dehydration_noOL_rep4$DateTime %within% day2_rep4,])
+dim(highfat_dehydration_noOL_rep4[highfat_dehydration_noOL_rep4$DateTime %within% day3_rep4,])
 
 ```
+Remove mice where tag fell out or other issue from temps
 
+```{r temp data QC}
+#probably don't need to do this every time, just in the beginning. 
+#I use this to identify animals whose body temps are really low - some of them are
+#just like that, and others it's cause the tag has fallen out. 
+#I use the functions.r script to remove the animals whose tag has fallen out. 
+#of note, just becuase the tag has fallen out does not mean that the physiology data are bad. 
+
+problems <- all_temps %>% filter(body_temp < 30)
+unique(problems$Animal_ID)
+
+problem_animal <- 1250
+
+coeff <- 0
+cols <- c("Baseline"="navyblue","Day 1"="sienna1","Day 2"="sienna3", "Day 3"="sienna4")
+prob_temp <- ggplot(data = baseline_temps %>% filter(Animal_ID == problem_animal) ,aes(x=as.POSIXct(time),y=body_temp)) +
+  scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  annotate("rect", xmin = as.POSIXct("1970-01-01 21:00:00", tz="UTC"), 
+           xmax = as.POSIXct("1970-01-01 23:59:59", tz="UTC"), 
+           ymin = -Inf, ymax = Inf, fill="grey84") +
+  geom_point(aes(color = "Baseline", alpha=0.1), shape=20, size=1)+
+  geom_point(data = day1_temps %>% filter(Animal_ID == problem_animal), aes(color="Day 1", alpha=0.2), shape=20, size=1)+
+  geom_point(data = day2_temps %>% filter(Animal_ID == problem_animal), aes(color="Day 2", alpha=0.2), shape=20, size=1)+
+  geom_point(data = day3_temps %>% filter(Animal_ID == problem_animal)%>% filter(Animal_ID == "1137"), aes(color="Day 3", alpha=0.2), shape=20, size=1)+
+  theme_classic()+
+  labs(x = "")+
+  scale_y_continuous(name = "Body Temperature (°C)", limits = c(25,40), sec.axis = sec_axis(~. - coeff, name="Room Temperature (°C)"))+ 
+  guides(alpha = "none")+
+ scale_colour_manual(name="Dehydration",values=cols, guide="none")
+prob_temp
+
+
+
+
+```
 
 Make plots
 
@@ -584,7 +759,7 @@ Make plots
 
 coeff <- 0
 cols <- c("Baseline"="navyblue","Day 1"="sienna1","Day 2"="sienna3", "Day 3"="sienna4")
-temperatures <- ggplot(data = hdr1_temps ,aes(x=as.POSIXct(time),y=body_temp)) +
+temperatures <- ggplot(data = baseline_temps ,aes(x=as.POSIXct(time),y=body_temp)) +
   scale_x_datetime(date_breaks = "2 hours", date_labels = "%H:%M") +
   annotate("rect", xmin = as.POSIXct("1970-01-01 00:00:01", tz="UTC"), 
            xmax = as.POSIXct("1970-01-01 06:00:00", tz="UTC"), 
