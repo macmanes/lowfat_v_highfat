@@ -78,6 +78,24 @@ mouse_metadata_highfat_rep4 <- read_excel("C:/Users/mdm2000/OneDrive - USNH/Pero
         "numeric", "numeric", "numeric", 
         "numeric", "text"))
 
+mouse_metadata_highfat_rep5 <- read_excel("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/mouse_data.xlsx", 
+    sheet = "rep5_highfat", col_types = c("text", 
+        "numeric", "numeric", "text", "text", 
+        "numeric", "text", "text", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "text"))
+
+mouse_metadata_highfat_rep7 <- read_excel("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/mouse_data.xlsx", 
+    sheet = "rep7_highfat", col_types = c("text", 
+        "numeric", "numeric", "text", "text", 
+        "numeric", "text", "text", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "numeric", "numeric", 
+        "numeric", "text"))
+
 ```
 
 
@@ -142,6 +160,24 @@ hdr4 <- hdr4 %>% mutate(DateTime = with_tz(DateTime, tz="EST"))
 hdr4_act <- read_csv("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep4/highfat_dehydrated_rep4_activity.csv", n_max=dim(hdr4)[1])
 
 hdr4_temps <- bring_in_temps_highfat_rep4("temps_rep4.csv")
+
+#this is the physiology data for the dehydration part of the highfat experiment rep5
+
+path <- "C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep5/"
+hdr5 <- bring_in_data_highfat_rep5("highfat_dehydrated_rep5.csv")
+hdr5 <- hdr5 %>% mutate(DateTime = with_tz(DateTime, tz="EST"))
+hdr5_act <- read_csv("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep5/highfat_dehydrated_rep5_activity.csv", n_max=dim(hdr5)[1])
+
+hdr5_temps <- bring_in_temps_highfat_rep5("temps_rep5.csv")
+
+#this is the physiology data for the dehydration part of the highfat experiment rep7
+
+path <- "C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep7/"
+hdr7 <- bring_in_data_highfat_rep7("highfat_dehydrated_rep7.csv")
+hdr7 <- hdr7 %>% mutate(DateTime = with_tz(DateTime, tz="EST"))
+hdr7_act <- read_csv("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/highfat_dehydration_rep7/highfat_dehydrated_rep7_activity.csv", n_max=dim(hdr7)[1])
+
+hdr7_temps <- bring_in_temps_highfat_rep7("temps_rep7.csv")
 
 ```
 
@@ -514,6 +550,144 @@ highfat_dehydration_noOL_rep4 <- hdr4_cages[-c(masterlist_noDup),]
 
 
 
+```{r manipulate data REP5}
+
+
+############# subset temp data
+
+target <- c(1,2,3,4,5,6,7)
+hdr5_temps_select <- hdr5_temps %>% 
+  filter(AntennaID %in% target)
+
+hdr5_temps <- hdr5_temps_select
+
+################### hdr5
+
+#make activity data non-cumulative
+hdr5 <- hdr5 %>% 
+  add_column(MOD_ADX = hdr5_act$MOD_ADX) %>%
+  mutate(Activity = MOD_ADX - lag(MOD_ADX, default = 0))
+
+
+
+#subset out baseline data
+baseline <- c(7)
+baseline_cage <- hdr5 %>% 
+  filter(Animal %in% baseline)
+
+
+#subset out animal data
+target <- c(0,1,2,3,4,5,6)
+cages <- hdr5 %>% 
+  filter(Animal %in% target)
+
+cages <- cages %>% 
+  dplyr::select(Animal_ID, sex, DateTime, date, time, weight, Activity, EE_KCalH, EE_kJH, H2Omg, 
+         H2Oml, Deg_C, CO2, VO2, VCO2, RQ, SD_VO2, SD_VCO2, SD_H2Oml, 
+         SD_H2Omg, SS4_FR, H2O_WVP, BP)
+
+hdr5_cages <- cages
+
+
+count = 1
+dependent_variables = c("EE_kJH", "RQ", "VO2", "VCO2", "H2Omg", "Activity")
+varname_list = c("EE_OLs","RQ_OLs","VO2_OLs","VCO2_OLs","H2O_OLs", "Activity_OLs")
+
+for (DV in dependent_variables){
+  print(DV)
+    model <- lm(as.formula(paste0(DV, " ~ Animal_ID")), data = hdr5_cages)
+  model.metrics <- augment(model) %>% dplyr::select(-.hat, -.sigma, -.fitted)
+  summ <- model.metrics %>% filter(abs(.std.resid) > 2) %>% as.data.frame()
+
+    OL_list = c()
+  masterlist = c()
+  for (each_outlier_row in 1:nrow(summ)){
+    this_weight <- summ[each_outlier_row, "Animal_ID"]
+    this_DV  <- summ[each_outlier_row, DV]
+    OL_list <- c(OL_list, (which(hdr5_cages$Animal_ID == this_weight & hdr5_cages[DV] == this_DV)))
+
+  }
+  print(OL_list)
+  #Assign list of outliers to specified variable lists (OL_list_EE_kJH, RQ, VO2, VCO2, mgH2O)
+  assign(paste("OL_list_", DV, sep = ""), OL_list)  
+}
+
+masterlist <- c(OL_list_EE_kJH, OL_list_RQ, OL_list_VO2, OL_list_VCO2, OL_list_H2Omg, OL_list_Activity)
+masterlist_noDup <- unique(masterlist)
+
+highfat_dehydration_noOL_rep5 <- hdr5_cages[-c(masterlist_noDup),]
+```
+
+
+```{r manipulate data REP7}
+
+
+############# subset temp data
+
+target <- c(1,2,3,4,5,6,7)
+hdr7_temps_select <- hdr7_temps %>% 
+  filter(AntennaID %in% target)
+
+hdr7_temps <- hdr7_temps_select
+
+################### hdr7
+
+#make activity data non-cumulative
+hdr7 <- hdr7 %>% 
+  add_column(MOD_ADX = hdr7_act$MOD_ADX) %>%
+  mutate(Activity = MOD_ADX - lag(MOD_ADX, default = 0))
+
+
+
+#subset out baseline data
+baseline <- c(7)
+baseline_cage <- hdr7 %>% 
+  filter(Animal %in% baseline)
+
+
+#subset out animal data
+target <- c(0,1,2,3,4,5,6)
+cages <- hdr7 %>% 
+  filter(Animal %in% target)
+
+cages <- cages %>% 
+  dplyr::select(Animal_ID, sex, DateTime, date, time, weight, Activity, EE_KCalH, EE_kJH, H2Omg, 
+         H2Oml, Deg_C, CO2, VO2, VCO2, RQ, SD_VO2, SD_VCO2, SD_H2Oml, 
+         SD_H2Omg, SS4_FR, H2O_WVP, BP)
+
+hdr7_cages <- cages
+
+
+count = 1
+dependent_variables = c("EE_kJH", "RQ", "VO2", "VCO2", "H2Omg", "Activity")
+varname_list = c("EE_OLs","RQ_OLs","VO2_OLs","VCO2_OLs","H2O_OLs", "Activity_OLs")
+
+for (DV in dependent_variables){
+  print(DV)
+    model <- lm(as.formula(paste0(DV, " ~ Animal_ID")), data = hdr7_cages)
+  model.metrics <- augment(model) %>% dplyr::select(-.hat, -.sigma, -.fitted)
+  summ <- model.metrics %>% filter(abs(.std.resid) > 2) %>% as.data.frame()
+
+    OL_list = c()
+  masterlist = c()
+  for (each_outlier_row in 1:nrow(summ)){
+    this_weight <- summ[each_outlier_row, "Animal_ID"]
+    this_DV  <- summ[each_outlier_row, DV]
+    OL_list <- c(OL_list, (which(hdr7_cages$Animal_ID == this_weight & hdr7_cages[DV] == this_DV)))
+
+  }
+  print(OL_list)
+  #Assign list of outliers to specified variable lists (OL_list_EE_kJH, RQ, VO2, VCO2, mgH2O)
+  assign(paste("OL_list_", DV, sep = ""), OL_list)  
+}
+
+masterlist <- c(OL_list_EE_kJH, OL_list_RQ, OL_list_VO2, OL_list_VCO2, OL_list_H2Omg, OL_list_Activity)
+masterlist_noDup <- unique(masterlist)
+
+highfat_dehydration_noOL_rep7 <- hdr7_cages[-c(masterlist_noDup),]
+```
+
+
 
 ```{r make experimental intervals}
 
@@ -556,6 +730,26 @@ day2_rep4 <- interval(rep4_water_removal + days(1), rep4_water_removal + days(2)
 day3_rep4 <- interval(rep4_water_removal + days(2), rep4_water_removal + days(3))
 
 baseline_temp_rep4 <- interval(rep4_water_removal - days(3), rep4_water_removal)
+
+### REP5
+
+rep5_water_removal <- ymd_hms("2023-01-30 11:59:59", tz="EST")
+baseline_rep5 <- interval(rep5_water_removal - days(3), rep5_water_removal)
+day1_rep5 <- interval(rep5_water_removal, rep5_water_removal + days(1))
+day2_rep5 <- interval(rep5_water_removal + days(1), rep5_water_removal + days(2))
+day3_rep5 <- interval(rep5_water_removal + days(2), rep5_water_removal + days(3))
+
+baseline_temp_rep5 <- interval(rep5_water_removal - days(3), rep5_water_removal)
+
+### REP7
+### Animals sac'd 1 day after water removal
+
+rep7_water_removal <- ymd_hms("2023-03-31 11:59:59", tz="EST")
+baseline_rep7 <- interval(rep7_water_removal - days(1), rep7_water_removal)
+day1_rep7 <- interval(rep7_water_removal, rep7_water_removal + days(1))
+
+
+baseline_temp_rep7 <- interval(rep7_water_removal - days(1), rep7_water_removal)
 
 ```
 
@@ -633,6 +827,41 @@ highfat_dehydration_noOL_rep4$experiment_day[highfat_dehydration_noOL_rep4$DateT
 highfat_dehydration_noOL_rep4$experiment_day[highfat_dehydration_noOL_rep4$DateTime %within% day2_rep4 == "TRUE"] <- "day2"
 highfat_dehydration_noOL_rep4$experiment_day[highfat_dehydration_noOL_rep4$DateTime %within% day3_rep4 == "TRUE"] <- "day3"
 write.csv(highfat_dehydration_noOL_rep4, "highfat_dehydration_rep4.csv", row.names = FALSE)
+
+```
+
+
+```{r add metadata REP5}
+
+
+highfat_dehydration_noOL_rep5 <- highfat_dehydration_noOL_rep5 %>%
+    mutate(replicate = "rep5")
+
+highfat_dehydration_noOL_rep5 <- highfat_dehydration_noOL_rep5 %>%
+    add_column(experiment_day = NA)
+
+
+highfat_dehydration_noOL_rep5$experiment_day[highfat_dehydration_noOL_rep5$DateTime %within% baseline_rep5 == "TRUE"] <- "baseline"
+highfat_dehydration_noOL_rep5$experiment_day[highfat_dehydration_noOL_rep5$DateTime %within% day1_rep5 == "TRUE"] <- "day1"
+highfat_dehydration_noOL_rep5$experiment_day[highfat_dehydration_noOL_rep5$DateTime %within% day2_rep5 == "TRUE"] <- "day2"
+highfat_dehydration_noOL_rep5$experiment_day[highfat_dehydration_noOL_rep5$DateTime %within% day3_rep5 == "TRUE"] <- "day3"
+write.csv(highfat_dehydration_noOL_rep5, "highfat_dehydration_rep5.csv", row.names = FALSE)
+
+```
+
+
+```{r add metadata REP5}
+
+
+highfat_dehydration_noOL_rep7 <- highfat_dehydration_noOL_rep7 %>%
+    mutate(replicate = "rep7")
+
+highfat_dehydration_noOL_rep7 <- highfat_dehydration_noOL_rep7 %>%
+    add_column(experiment_day = NA)
+
+highfat_dehydration_noOL_rep7$experiment_day[highfat_dehydration_noOL_rep7$DateTime %within% baseline_rep7 == "TRUE"] <- "baseline"
+highfat_dehydration_noOL_rep7$experiment_day[highfat_dehydration_noOL_rep7$DateTime %within% day1_rep7 == "TRUE"] <- "day1"
+write.csv(highfat_dehydration_noOL_rep7, "highfat_dehydration_rep7.csv", row.names = FALSE)
 
 ```
 
