@@ -1,0 +1,86 @@
+---
+title: "pregnancy"
+author: "MacManes"
+date: "05/13/2023"
+output: html_document
+---
+
+bring in libs
+
+```{r import libraries message=FALSE, warning=FALSE, echo=FALSE}
+library(devtools)
+library(tidyverse)
+library(lubridate)
+library(readr)
+library(viridis)
+library(patchwork)
+library(tidyselect)
+library(readxl)
+library(broom)
+library(cowplot)
+library(DescTools)
+library(ggpubr)
+library(plyr)
+library(pwr)
+library(Cairo)
+library(ggpattern)
+library(timeDate)
+library(mgcv)
+library(MASS)
+library(dplyr)
+```
+
+```{r create environment}
+setwd("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/R/pregnancy/")
+path <- "C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/data/pregnancy/rep1/"
+source("C:/Users/mdm2000/OneDrive - USNH/PeroPhysiology/R/pregnancy/pregnancy_functions.R")
+```
+
+```{r bring in data, echo = FALSE, warning = FALSE, message = FALSE}
+
+rep1_pregnancy_temps <- bring_in_temps_pregnancy_rep1("rep1_pregnancy.xlsx")
+
+```
+
+```{r filter cages}
+good_cages <- c(1,3,4,5,6,7,8,9,10,12,13, 14,15,16)
+#good_cages <- c(2)
+clean_data <- rep1_pregnancy_temps %>% filter(AntennaID %in% good_cages)
+
+```
+
+```{r plotting data}
+
+c16 <- c(
+  "dodgerblue2",
+  "#E31A1C", # red
+  "green4",
+  "#6A3D9A", # purple
+  "#FF7F00", # orange
+  "black", 
+  "gold1",
+  "skyblue2", 
+  "#FB9A99", # lt pink
+  "gray70", 
+  "maroon", 
+  "deeppink1", 
+  "blue1", 
+  "darkturquoise", 
+  "green1", 
+  "darkorange4"
+)
+
+preggo_temps <- ggplot(data = clean_data ,aes(x=as.POSIXct(DateTime),y=body_temp)) +
+  scale_x_datetime(date_breaks = "12 hours", date_labels = "%H:%M") +
+  geom_point(aes(group=as.factor(AntennaID), color=as.factor(AntennaID)), size = .2)+
+  labs(x = "")+
+  theme_classic()+
+  geom_smooth(method='loess', se = FALSE, aes(color=as.factor(AntennaID)), span=0.09)+
+  scale_y_continuous(name = "Body Temperature (°C)", limits = c(32,40))+ 
+  guides(alpha = "none")+
+ scale_colour_manual(name="Dehydration",values=c16)
+preggo_temps
+
+
+
+```
